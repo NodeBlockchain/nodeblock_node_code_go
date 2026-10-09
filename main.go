@@ -43,7 +43,7 @@ const (
 	heartbeatInterval  = 30 * time.Second
 	httpTimeout        = 10 * time.Second
 	keyFilePermissions = 0600
-	defaultKeyFileName = "identity.key" // raw 64-byte ed25519 private key, local-only, never sent over the wire
+	defaultKeyFileName = "identity.key" // raw 64-byte ed25519 private key, local-only, never sent over the wire; stored next to the binary by default so one machine can run several agents, one per folder
 	stateFileName      = "node.json"    // remembers nodeId + api URL so restarts need no flags
 )
 
@@ -160,8 +160,18 @@ func parseFlags() Config {
 
 	kp := *keyPath
 	if kp == "" {
-		dir, _ := os.UserHomeDir()
-		kp = filepath.Join(dir, ".nodeblock", defaultKeyFileName)
+		// Default the identity key to the agent binary's OWN folder, so you can
+		// run several agents on one machine — one per folder, each with its own
+		// copy of the binary — and they each keep a separate identity.key and
+		// node.json instead of fighting over one shared file. This is resolved
+		// from the executable's location (not the working directory), so it
+		// still lands in the folder when launched from a service or a script.
+		// Override anytime with -key-path or NODEBLOCK_KEY_PATH.
+		baseDir := "."
+		if exePath, err := os.Executable(); err == nil {
+			baseDir = filepath.Dir(exePath)
+		}
+		kp = filepath.Join(baseDir, defaultKeyFileName)
 	}
 	// Note: we intentionally do NOT exit here if node-id/api are missing —
 	// they may be recovered from saved state in main().
